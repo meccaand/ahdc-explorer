@@ -1,0 +1,134 @@
+# AHDC Health Data: data dictionary (SYNTHETIC prototype dataset)
+# Served to the agent by the describe_table / list_tables tools. The data team owns this file.
+
+dataset:
+  name: AHDC Health Data (synthetic prototype)
+  synthetic: true
+  description: >
+    Country-year public-health indicators for 179 countries, 2000-2025. Stands in for AHDC's PostgreSQL warehouse.
+    ALL VALUES ARE SYNTHETIC: invented for a prototype demo, not for analysis.
+  latest_year: 2025
+  notes:
+    - 2025 values in disease_burden, intervention_coverage and demographics are provisional (is_provisional = 1).
+    - health_expenditure ends in 2023.
+    - Check data_notes for known gaps, methodology changes and caveats before answering.
+
+tables:
+  countries:
+    description: One row per country, with its membership in each region scheme and its income group.
+    grain: iso3
+    columns:
+      iso3: {type: text, description: ISO 3166-1 alpha-3 code. Primary key; joins every other table.}
+      name: {type: text, description: Country name.}
+      wb_region:
+        type: text
+        description: World Bank region.
+        values: [East Asia & Pacific, Europe & Central Asia, Latin America & Caribbean, Middle East & North Africa, North America, South Asia, Sub-Saharan Africa]
+      who_region:
+        type: text
+        description: WHO region.
+        values: [African Region, Region of the Americas, South-East Asia Region, European Region, Eastern Mediterranean Region, Western Pacific Region]
+      un_subregion: {type: text, description: "UN M49 subregion, e.g. 'South-eastern Asia', 'Eastern Africa'."}
+      income_group: {type: text, description: World Bank income group, values: [L, LM, UM, H], value_labels: {L: low, LM: lower-middle, UM: upper-middle, H: high}}
+      asean_join_year: {type: integer, description: Year the country joined ASEAN; NULL if not a member. Timor-Leste joined in 2025.}
+      malaria_endemic: {type: integer, description: 1 if the country has malaria rows in disease_burden (endemic now or recently).}
+    caveats:
+      - Region schemes disagree. WB 'Sub-Saharan Africa' has 48 countries (includes Sudan, Somalia); WHO 'African Region' has 47 (includes Algeria, excludes Sudan and Somalia).
+      - "'Southeast Asia' is ambiguous: ASEAN members (asean_join_year IS NOT NULL), UN subregion 'South-eastern Asia', or WHO 'South-East Asia Region' (includes India, Bangladesh, Nepal...)."
+
+  demographics:
+    description: Population by country and year.
+    grain: iso3, year
+    columns:
+      iso3: {type: text}
+      year: {type: integer, range: [2000, 2025]}
+      population: {type: integer, unit: people, description: Mid-year total population.}
+      under5_population: {type: integer, unit: people, description: Mid-year population aged 0-4.}
+      life_expectancy: {type: real, unit: years, description: Life expectancy at birth.}
+      is_provisional: {type: integer, description: 1 for 2025.}
+    caveats:
+      - Use population as the denominator when aggregating rates across countries.
+
+  disease_burden:
+    description: Deaths and incidence by country, year and cause, as counts and as rates per 100,000, with 95% uncertainty intervals.
+    grain: iso3, year, cause, measure, metric
+    columns:
+      iso3: {type: text}
+      year: {type: integer, range: [2000, 2025]}
+      cause: {type: text, values: [malaria, tuberculosis, hiv_aids, measles, diarrhoeal_diseases]}
+      measure: {type: text, values: [deaths, incidence], description: "incidence = new cases (for hiv_aids: new infections)."}
+      metric: {type: text, values: [count, rate_per_100k]}
+      value: {type: real, description: Point estimate. Unit depends on metric (people, or per 100,000 population).}
+      lower: {type: real, description: Lower bound of the 95% uncertainty interval.}
+      upper: {type: real, description: Upper bound of the 95% uncertainty interval.}
+      is_provisional: {type: integer, description: 1 for 2025 estimates (subject to revision; wider intervals).}
+    caveats:
+      - "To aggregate across countries: SUM(count) / SUM(demographics.population) * 1e5. Never average rate_per_100k rows across countries."
+      - Malaria rows exist only for endemic countries (countries.malaria_endemic = 1).
+      - "Known gaps: no 2025 malaria estimate for Eritrea or South Sudan; no tuberculosis estimate for Somalia 2003-2005."
+      - Uncertainty bounds of an aggregate can be approximated by summing country bounds (conservative).
+
+  intervention_coverage:
+    description: Coverage of vaccines and other interventions, in percent, from two sources.
+    grain: iso3, year, intervention, source
+    columns:
+      iso3: {type: text}
+      year: {type: integer, range: [2000, 2025]}
+      intervention:
+        type: text
+        values: [DTP3, MCV1, MCV2, Pol3, HepB3, ITN_use, ART]
+        value_labels:
+          DTP3: third dose of diphtheria-tetanus-pertussis vaccine, among surviving infants (standard measure of routine immunization)
+          MCV1: first dose of measles-containing vaccine
+          MCV2: second dose of measles-containing vaccine (not reported before the country introduced it)
+          Pol3: third dose of polio vaccine
+          HepB3: third dose of hepatitis B vaccine
+          ITN_use: population sleeping under an insecticide-treated net (malaria-endemic Sub-Saharan Africa only)
+          ART: people living with HIV receiving antiretroviral therapy
+      source: {type: text, values: [modeled, admin], description: "modeled = harmonized estimates (preferred); admin = country-reported doses / target population (vaccines only)."}
+      coverage_pct: {type: real, unit: percent, description: "Can exceed 100 for source = 'admin' because of denominator problems."}
+      is_provisional: {type: integer, description: 1 for 2025.}
+    caveats:
+      - Prefer source = 'modeled' for trends and cross-country comparisons.
+      - "India's admin DTP3 exceeds 100% in 2016-2018."
+      - Many countries show a dip in 2020-2021 (COVID-19 disruption).
+      - "To aggregate coverage across countries, weight by under5_population (vaccines) or population (ITN_use), not a simple mean."
+
+  health_expenditure:
+    description: Current health expenditure (CHE) per capita and as a share of GDP; out-of-pocket share.
+    grain: iso3, year
+    columns:
+      iso3: {type: text}
+      year: {type: integer, range: [2000, 2023]}
+      che_per_capita_usd: {type: real, unit: current US dollars}
+      che_per_capita_ppp: {type: real, unit: current international dollars (PPP)}
+      che_pct_gdp: {type: real, unit: percent of GDP}
+      oop_pct: {type: real, unit: percent of CHE, description: Out-of-pocket spending as a share of current health expenditure.}
+    caveats:
+      - Latest year is 2023.
+      - USD reflects exchange rates; PPP reflects purchasing power. Cross-country gaps look much larger in USD. State which one you use.
+
+  health_facilities:
+    description: Counts of hospitals and health centres, and hospital beds, from periodic facility surveys.
+    grain: iso3, year, facility_type
+    columns:
+      iso3: {type: text}
+      year: {type: integer, values: [2010, 2015, 2020, 2024]}
+      facility_type: {type: text, values: [hospital, health_centre]}
+      facility_count: {type: integer, unit: facilities}
+      beds: {type: integer, unit: beds, description: Hospital beds (NULL for health_centre).}
+    caveats:
+      - Survey years only; not every country reports every survey year.
+      - Counts are absolute. Normalize per 100,000 population (or beds per 1,000) using demographics before comparing countries.
+
+  data_notes:
+    description: Known caveats, data gaps and methodology changes. Check before answering.
+    grain: note_id
+    columns:
+      note_id: {type: integer}
+      table_name: {type: text, description: "Table the note applies to ('*' = whole dataset)."}
+      indicator: {type: text, description: "Cause, intervention or topic the note applies to; NULL = whole table."}
+      iso3: {type: text, description: NULL = all countries.}
+      year_from: {type: integer, description: NULL = all years.}
+      year_to: {type: integer}
+      note: {type: text}
