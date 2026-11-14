@@ -25,5 +25,6 @@ Haiku's misses were wrong numbers, not formatting: the WHO African Region malari
 1. **Region membership vs data year:** the skill now says to resolve ASEAN `as_of_year` = the data year and to mention Timor-Leste in Caveats.
 2. **Answering "which":** drivers have to be named in the text, not only shown in a chart.
 3. Earlier (M2/M3): confidence drift. Fixed by a 4-check rubric and a required alternative-region robustness check.
+4. Charts were optional, and the follow-up sometimes had none; the skill now expects a chart for any multi-value answer (bar for drivers and rankings). Demo beats rechecked: 12/12.
 
 Raw results: `evals/results/*.jsonl`. Re-run: `uv run python evals/run_evals.py [--only demo] [--repeat N] [--model …]`.

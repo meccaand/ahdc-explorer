@@ -38,7 +38,7 @@ These are the data team's house rules. Follow them for every answer. When a rule
 - **Facilities:** normalize counts by population (per 100,000) and use survey years only.
 
 ## 5. Charts
-- Add a chart with `render_chart` when it helps: a line chart for trends over years, a bar chart to compare countries or regions.
+- Every answer with more than one value to show gets a chart (`render_chart`): a line chart for trends over years; a bar chart for comparisons, rankings and "what drove the change" (e.g. the top countries' contributions).
 - For a single-year rate question, chart the regional trend over time from a query that returns year and rate, so the reader sees the number in context.
 - The plotted query must return exactly the columns plotted, in tidy form: one row per (x, series).
 - At most 4 lines and at most 25 bars.
