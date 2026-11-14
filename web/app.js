@@ -63,8 +63,8 @@ function createTurn(question) {
   el.innerHTML = `
     <div class="question"><span class="gt">&gt;</span><span>${esc(question)}</span></div>
     <div class="answer-row">
-      <div class="headline-wrap"><span class="bullet">●</span><h2 class="headline">working…</h2></div>
-      <span class="connector" aria-hidden="true"></span>
+      <span class="bullet">●</span>
+      <div class="headline-wrap"><h2 class="headline">working…</h2><span class="connector" aria-hidden="true"></span></div>
       <div class="steps-head"><span><span class="adot">●</span> <span class="n">0 steps</span></span><span class="secs">0s</span></div>
     </div>
     <div class="body">
@@ -225,7 +225,7 @@ function chartFigure(ch) {
     ? '   ' + ch.series.slice(1).map((s) => `<span>- - ${esc(s.name)}</span>`).join('   ') + `   <span class="s1">— ${esc(ch.series[0].name)}</span>`
     : '';
   const svg = ch.type === 'bar' ? barChart(ch) : lineChart(ch);
-  return `<figure><figcaption><span>${esc(ch.title + unit)}${legend}</span><span>[synthetic data]</span></figcaption>${svg}</figure>`;
+  return `<figure><figcaption><span>${esc(ch.title + unit)}${legend}</span></figcaption>${svg}</figure>`;
 }
 
 function lineChart(ch) {
