@@ -54,7 +54,8 @@ async def run_turn(session: AgentSession, question: str, as_json: bool, save_tra
             continue
         if ev["type"] == "step":
             if ev["status"] == "running":
-                print(f"  {GREEN}●{RESET} {BOLD}{ev['tool']}{RESET}{GREY}{ev['args']}{RESET}", flush=True)
+                if ev["out"] == "running…":  # skip the earlier "writing…" event; print once the input is known
+                    print(f"  {GREEN}●{RESET} {BOLD}{ev['tool']}{RESET}{GREY}{ev['args']}{RESET}", flush=True)
             else:
                 color = RED if ev["status"] == "error" else GREY
                 if ev["tool"] == "plan":

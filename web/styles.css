@@ -169,6 +169,7 @@ details[open] .chev { transform: rotate(90deg); }
   flex: 0 0 auto; border-top: 1px solid var(--border); padding-top: 8px; color: var(--muted); font-size: 12px;
   display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px;
 }
+.steps-foot .trace { margin-left: auto; }  /* stays right-aligned if the usage text wraps it to a new line */
 [hidden] { display: none !important; }
 
 /* Input */

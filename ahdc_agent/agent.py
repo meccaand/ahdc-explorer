@@ -8,12 +8,13 @@ configures it and translates its messages.
 from __future__ import annotations
 
 import dataclasses
+import json
 import os
 import time
 from typing import Any, AsyncIterator
 
-from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage, SystemMessage,
-                              TextBlock, ToolResultBlock, ToolUseBlock, UserMessage)
+from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage, StreamEvent,
+                              SystemMessage, TextBlock, ToolResultBlock, ToolUseBlock, UserMessage)
 from dotenv import load_dotenv
 
 from . import db
@@ -25,8 +26,11 @@ from .tools import SERVER, build_server
 
 load_dotenv(db.ROOT / ".env")
 
-MODEL = os.getenv("AHDC_MODEL", "claude-opus-5-5")
+# Sonnet 5.5 at medium effort: in our runs it matched Opus 5.5 on the demo questions at about half the latency and a
+# quarter of the cost (Haiku 5.5 was faster still but made a units slip). Override with AHDC_MODEL / AHDC_EFFORT.
+MODEL = os.getenv("AHDC_MODEL", "claude-sonnet-5-5")
 EFFORT = os.getenv("AHDC_EFFORT", "medium")
+FAST = os.getenv("AHDC_FAST", "") == "1"  # fast mode: same model, faster output, higher price (SDK opt-in)
 SKILL = "ahdc-analysis-standards"
 PREFIX = f"mcp__{SERVER}__"
 
@@ -50,8 +54,10 @@ def build_options(state: SessionState) -> ClaudeAgentOptions:
         cwd=str(db.ROOT),
         env={"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
         max_turns=40,
+        include_partial_messages=True,      # stream events, so a step can be shown as soon as the model starts it
         max_budget_usd=float(os.getenv("AHDC_MAX_BUDGET_USD", "5")),
         stderr=_log_stderr,
+        settings=json.dumps({"fastMode": True}) if FAST else None,
     )
 
 
@@ -99,7 +105,8 @@ def result_text(block: ToolResultBlock) -> str:
 
 def jsonable(obj: Any) -> Any:
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return {"_type": type(obj).__name__, **{k: jsonable(v) for k, v in dataclasses.asdict(obj).items()}}
+        # Recurse field by field (not dataclasses.asdict) so nested blocks keep their type names in the raw trace.
+        return {"_type": type(obj).__name__, **{f.name: jsonable(getattr(obj, f.name)) for f in dataclasses.fields(obj)}}
     if isinstance(obj, dict):
         return {k: jsonable(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
@@ -141,6 +148,18 @@ class AgentSession:
 
         await self.client.query(question)
         async for msg in self.client.receive_response():
+            if isinstance(msg, StreamEvent):
+                # A tool call has started streaming: show the step now ("writing…"), before its input is complete.
+                ev, cb = msg.event, msg.event.get("content_block") or {}
+                if (msg.parent_tool_use_id is None and ev.get("type") == "content_block_start"
+                        and cb.get("type") == "tool_use" and cb.get("id") not in steps):
+                    seen_tool = True
+                    n_steps += 1
+                    n_tools += 1
+                    steps[cb["id"]] = {"type": "step", "id": cb["id"], "tool": short_tool(cb.get("name", "")),
+                                       "args": "", "status": "running", "out": "writing…"}
+                    yield dict(steps[cb["id"]])
+                continue
             turn.raw_messages.append(jsonable(msg))
             if isinstance(msg, SystemMessage):
                 if msg.subtype == "init":
@@ -158,12 +177,13 @@ class AgentSession:
                         elif not answered:
                             yield {"type": "note", "text": block.text.strip()}
                     elif isinstance(block, ToolUseBlock) and not sub:
-                        seen_tool = True
-                        n_steps += 1
-                        n_tools += 1
-                        step = {"type": "step", "id": block.id, "tool": short_tool(block.name),
-                                "args": tool_args(block.name, block.input), "status": "running", "out": ""}
-                        steps[block.id] = step
+                        if block.id not in steps:
+                            seen_tool = True
+                            n_steps += 1
+                            n_tools += 1
+                        step = steps.setdefault(block.id, {"type": "step", "id": block.id})
+                        step.update(tool=short_tool(block.name), args=tool_args(block.name, block.input),
+                                    status="running", out="running…")
                         yield dict(step)
             elif isinstance(msg, UserMessage) and isinstance(msg.content, list):
                 for block in msg.content:

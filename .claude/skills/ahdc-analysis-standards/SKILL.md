@@ -24,6 +24,7 @@ These are the data team's house rules. Follow them for every answer. When a rule
 - "Southeast Asia": default to the 10 ASEAN members as of the data year (Timor-Leste joined in 2025). The alternatives are the UN 'South-eastern Asia' subregion and the WHO South-East Asia Region, which includes India and Bangladesh and is a different grouping.
 - "South Asia": World Bank region (8 countries).
 - Other names: pick the closest scheme, state it, and name the alternative.
+- **Robustness check (required):** when a region has a common alternative definition (e.g. Sub-Saharan Africa → WHO African Region), run the same calculation for the alternative as well, in the same query or right after it, and report the result in Assumptions. In a follow-up, a check already done earlier in the conversation counts; say so.
 - For the confidence `definition` check: "Southeast Asia" and other names that map to materially different country sets are `-` unless the user named the grouping. "Sub-Saharan Africa" is `+` if you checked the WHO African Region and the result is similar.
 
 ## 4. Data quality

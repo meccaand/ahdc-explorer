@@ -48,6 +48,10 @@ uv run uvicorn server.app:app --port 8000      # then open http://127.0.0.1:8000
 
 The design spec is in `../design/DESIGN.md` (locked).
 
+## Model and speed
+
+The default is `claude-sonnet-5-5` at effort `medium`; `AHDC_MODEL`, `AHDC_EFFORT` and `AHDC_FAST=1` (fast mode, via the SDK's `settings` opt-in) override it. Turns take about 10–20 s. Each step appears as soon as the model starts writing it (`include_partial_messages`).
+
 ## Run the agent (CLI)
 
 ```bash

@@ -43,7 +43,7 @@ function fmtNum(v) {
   else s = String(Math.round(n * 10) / 10);
   return s.replace(/^-/, '−');
 }
-const kfmt = (n) => (n == null ? '?' : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+const kfmt = (n) => (n == null ? '?' : n >= 10000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 // ---------------------------------------------------------------------------------------------- session
@@ -119,7 +119,9 @@ function upsertStep(t, ev) {
     t.n.textContent = plural(t.count, 'step', 'steps');
   }
   s.className = `step ${ev.status}`;
-  $('.out', s).textContent = `⎿ ${ev.status === 'running' ? '…' : ev.out}`;
+  $('.tool', s).textContent = ev.tool;
+  $('.args', s).textContent = ev.args || '';
+  $('.out', s).textContent = `⎿ ${ev.status === 'running' ? ev.out || '…' : ev.out}`;
   if (t.follow) t.scroll.scrollTop = t.scroll.scrollHeight;
   measure(t);
 }
@@ -177,8 +179,9 @@ function finish(t, ev) {
   const s = ev.stats || {};
   if (t.el.classList.contains('pending')) showError(t, 'The agent stopped without an answer.');
   t.secs.textContent = s.seconds != null ? `${s.seconds}s` : t.secs.textContent;
-  t.usage.textContent = `${plural(s.tool_calls ?? 0, 'tool call', 'tool calls')} · ${kfmt(s.tokens_in)} in / ${kfmt(s.tokens_out)} out`;
-  if (s.cost_usd != null) t.usage.title = `$${s.cost_usd.toFixed(3)} · ${s.num_turns} model turns · session ${s.session_id}`;
+  const cost = s.cost_usd != null ? ` · $${s.cost_usd.toFixed(2)}` : '';
+  t.usage.textContent = `${plural(s.tool_calls ?? 0, 'tool call', 'tool calls')} · ${kfmt(s.tokens_in)} in / ${kfmt(s.tokens_out)} out${cost}`;
+  if (s.num_turns != null) t.usage.title = `${s.num_turns} model turns · session ${s.session_id}`;
   if (t.rawTrace) {
     t.trace.href = URL.createObjectURL(new Blob([JSON.stringify(t.rawTrace, null, 1)], { type: 'application/json' }));
     t.trace.hidden = false;
