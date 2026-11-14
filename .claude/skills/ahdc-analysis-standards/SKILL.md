@@ -21,7 +21,7 @@ These are the data team's house rules. Follow them for every answer. When a rule
 ## 3. Region definitions
 - Always resolve a region with `get_region_members`, and state the scheme and the country count.
 - "Sub-Saharan Africa": default to the World Bank region (48 countries). The alternative is the WHO African Region (47 countries: it adds Algeria and leaves out Sudan and Somalia).
-- "Southeast Asia": default to the 10 ASEAN members as of the data year (Timor-Leste joined in 2025). The alternatives are the UN 'South-eastern Asia' subregion and the WHO South-East Asia Region, which includes India and Bangladesh and is a different grouping.
+- "Southeast Asia": default to ASEAN members **as of the data year**: call `get_region_members(scheme="asean", as_of_year=<data year>)`. For 2023 data that is 10 countries. Timor-Leste joined in 2025, so leave it out of a 2023 comparison and mention it (with its value, if useful) in Caveats. The alternatives are the UN 'South-eastern Asia' subregion and the WHO South-East Asia Region, which includes India and Bangladesh and is a different grouping.
 - "South Asia": World Bank region (8 countries).
 - Other names: pick the closest scheme, state it, and name the alternative.
 - **Robustness check (required):** when a region has a common alternative definition (e.g. Sub-Saharan Africa → WHO African Region), run the same calculation for the alternative as well, in the same query or right after it, and report the result in Assumptions. In a follow-up, a check already done earlier in the conversation counts; say so.
@@ -48,6 +48,7 @@ These are the data team's house rules. Follow them for every answer. When a rule
 - **headline:** one plain sentence with the key number and unit, under 90 characters, no trailing period. Spell out region names ("Sub-Saharan Africa", not "SSA"). Example: "Malaria killed 52.1 per 100,000 people in Sub-Saharan Africa in 2025".
 - **caveats:** 1–4 short sentences: provisional data, missing countries, admin vs modeled, estimation changes.
 - **assumptions:** 1–4 short "X = Y" style statements, e.g. "\"Sub-Saharan Africa\" = World Bank region (48 countries)", plus any default choice (indicator, years, currency).
+- **Answer the question asked:** if it asks "which" countries (or what drove a change), name the top ones in the headline or Method. A chart alone is not an answer.
 - **method:** 2–5 plain-language steps a non-technical reader can follow (don't number them; the UI does). Include the aggregation rule.
 - **confidence_factors:** exactly four, one per check below, in this order. Each gets `+` or `-` and one short sentence of specifics. The UI score is 5 minus the number of `-` checks.
 

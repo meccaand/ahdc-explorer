@@ -59,6 +59,16 @@ uv run python cli.py                                   # interactive; /new = new
 uv run python cli.py "question" "follow-up" --trace    # scripted; --trace saves raw SDK messages to logs/
 ```
 
+## Evals
+
+```bash
+uv run python evals/run_evals.py                          # 15-question golden set
+uv run python evals/run_evals.py --only demo --repeat 5   # the 4 demo beats, 5 times each
+uv run python evals/run_evals.py --model claude-opus-5-5  # compare models
+```
+
+Latest results: `evals/RESULTS.md`. Sonnet 5.5 passes 30/30 at a median of 13 s and $0.03 per question.
+
 ## How it uses the Claude Agent SDK
 
 | Piece | SDK feature | File |

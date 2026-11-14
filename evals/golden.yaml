@@ -1,0 +1,190 @@
+# Golden eval set for the AHDC agent.
+# Expected values are computed from the database at grading time (`sql`), so they stay right if the data is
+# regenerated. Every check is graded on the LAST turn's answer.
+#
+# Check types:
+#   number:   {sql | value, any_of: [...], where: headline|any, tol: <abs>, rel: <relative>}
+#             passes if a number in the answer text matches the expected value within tolerance
+#   mentions: {pattern: <regex>, where: headline|any}      (case-insensitive)
+#   absent:   {pattern: <regex>, where: headline|any}      must NOT appear
+#   no_value_in_headline: true                             headline has no number except years
+#
+# "any" = headline + caveats + assumptions + method + confidence factor texts.
+
+items:
+  # ---------------------------------------------------------------- demo beats
+  - id: malaria_ssa_2025
+    tags: [demo, weighting, region, provisional, missing]
+    turns: ["What was the malaria mortality rate in Sub-Saharan Africa in 2025?"]
+    checks:
+      - number:
+          where: headline
+          tol: 0.05
+          sql: >-
+            SELECT ROUND(1e5*SUM(b.value)/SUM(d.population),1) FROM disease_burden b
+            JOIN demographics d USING(iso3,year) JOIN countries c USING(iso3)
+            WHERE c.wb_region='Sub-Saharan Africa' AND cause='malaria' AND measure='deaths' AND metric='count' AND year=2025
+      - absent: {where: headline, pattern: "40\\.6"}          # the unweighted mean of country rates
+      - mentions: {pattern: "World Bank"}
+      - mentions: {pattern: "provisional"}
+      - mentions: {pattern: "Eritrea"}
+
+  - id: malaria_followup_2015
+    tags: [demo, session, comparability]
+    turns:
+      - "What was the malaria mortality rate in Sub-Saharan Africa in 2025?"
+      - "How does that compare to 2015, and which countries drove the change?"
+    checks:
+      - number:
+          where: any
+          tol: 0.05
+          sql: >-
+            SELECT ROUND(1e5*SUM(b.value)/SUM(d.population),1) FROM disease_burden b
+            JOIN demographics d USING(iso3,year) JOIN countries c USING(iso3)
+            WHERE c.wb_region='Sub-Saharan Africa' AND cause='malaria' AND measure='deaths' AND metric='count' AND year=2015
+            AND iso3 IN (SELECT iso3 FROM disease_burden WHERE cause='malaria' AND year=2025)
+      - mentions: {pattern: "Nigeria"}
+      - mentions: {pattern: "same 46|46 countries|46 of 48"}
+
+  - id: india_dtp3_decade
+    tags: [demo, admin_vs_modeled, trend]
+    turns: ["How has child vaccination coverage changed in India over the last decade?"]
+    checks:
+      - number: {where: headline, value: 87, tol: 0.5}
+      - number: {where: headline, value: 93, tol: 0.5}
+      - number: {where: any, value: 85, tol: 0.5}           # the 2021 COVID dip
+      - mentions: {pattern: "DTP3"}
+      - mentions: {pattern: "modell?ed"}
+      - absent: {where: headline, pattern: "10[0-9](\\.\\d)?\\s?%"}  # admin >100% must not be the answer
+
+  - id: asean_spending_2023
+    tags: [demo, region, currency, latest_year]
+    turns: ["Compare health spending per capita across Southeast Asian countries."]
+    checks:
+      - number: {where: any, rel: 0.01, sql: "SELECT che_per_capita_ppp FROM health_expenditure WHERE iso3='SGP' AND year=2023"}
+      - number: {where: any, rel: 0.01, sql: "SELECT che_per_capita_ppp FROM health_expenditure WHERE iso3='LAO' AND year=2023"}
+      - mentions: {pattern: "2023"}
+      - mentions: {pattern: "PPP|purchasing power"}
+      - mentions: {pattern: "ASEAN"}
+
+  # ---------------------------------------------------------------- more coverage
+  - id: malaria_who_afr_2025
+    tags: [region, weighting]
+    turns: ["What was the malaria death rate in the WHO African Region in 2025?"]
+    checks:
+      - number:
+          where: headline
+          tol: 0.15
+          any_of:
+            # with or without Algeria's population (Algeria has no malaria rows: non-endemic)
+            - >-
+              SELECT ROUND(1e5*SUM(b.value)/SUM(d.population),1) FROM disease_burden b
+              JOIN demographics d USING(iso3,year) JOIN countries c USING(iso3)
+              WHERE c.who_region='African Region' AND cause='malaria' AND measure='deaths' AND metric='count' AND year=2025
+            - >-
+              SELECT ROUND(1e5*(SELECT SUM(b.value) FROM disease_burden b JOIN countries c USING(iso3)
+              WHERE c.who_region='African Region' AND cause='malaria' AND measure='deaths' AND metric='count' AND year=2025)
+              / (SELECT SUM(population) FROM demographics d JOIN countries c USING(iso3)
+              WHERE c.who_region='African Region' AND year=2025 AND iso3 NOT IN ('ERI','SSD')),1)
+      - mentions: {pattern: "WHO"}
+      - mentions: {pattern: "provisional"}
+
+  - id: tb_south_asia_2024
+    tags: [count, region]
+    turns: ["How many people died of tuberculosis in South Asia in 2024?"]
+    checks:
+      - number:
+          where: headline
+          rel: 0.01
+          sql: >-
+            SELECT SUM(value) FROM disease_burden b JOIN countries c USING(iso3)
+            WHERE c.wb_region='South Asia' AND cause='tuberculosis' AND measure='deaths' AND metric='count' AND year=2024
+      - mentions: {pattern: "World Bank|8 countries"}
+
+  - id: hiv_highest_2024
+    tags: [ranking]
+    turns: ["Which country had the highest HIV/AIDS death rate in 2024?"]
+    checks:
+      - mentions: {where: headline, pattern: "Lesotho"}
+      - number:
+          where: any
+          tol: 0.15
+          sql: >-
+            SELECT ROUND(value,1) FROM disease_burden WHERE iso3='LSO' AND cause='hiv_aids' AND measure='deaths'
+            AND metric='rate_per_100k' AND year=2024
+
+  - id: measles_cod_2019
+    tags: [data_notes]
+    turns: ["How many measles deaths were there in the Democratic Republic of the Congo in 2019?"]
+    checks:
+      - number:
+          where: headline
+          rel: 0.01
+          sql: >-
+            SELECT value FROM disease_burden WHERE iso3='COD' AND cause='measles' AND measure='deaths' AND metric='count' AND year=2019
+      - mentions: {pattern: "outbreak"}
+
+  - id: nigeria_under5_share_2025
+    tags: [demographics, derived]
+    turns: ["What share of Nigeria's population was under five years old in 2025?"]
+    checks:
+      - number: {where: headline, tol: 0.15, sql: "SELECT ROUND(100.0*under5_population/population,1) FROM demographics WHERE iso3='NGA' AND year=2025"}
+
+  - id: germany_beds_per_1000
+    tags: [facilities, normalization, latest_year]
+    turns: ["How many hospital beds per 1,000 people does Germany have?"]
+    checks:
+      - number:
+          where: headline
+          tol: 0.1
+          sql: >-
+            SELECT ROUND(1000.0*f.beds/d.population,1) FROM health_facilities f JOIN demographics d USING(iso3,year)
+            WHERE iso3='DEU' AND facility_type='hospital' AND year=(SELECT MAX(year) FROM health_facilities WHERE iso3='DEU')
+      - mentions: {pattern: "20(24|20)"}
+
+  - id: india_spending_latest
+    tags: [latest_year, currency]
+    turns: ["How much did India spend on health per person in 2025?"]
+    checks:
+      - mentions: {pattern: "2023"}
+      - number:
+          where: any
+          rel: 0.02
+          any_of:
+            - "SELECT che_per_capita_usd FROM health_expenditure WHERE iso3='IND' AND year=2023"
+            - "SELECT che_per_capita_ppp FROM health_expenditure WHERE iso3='IND' AND year=2023"
+
+  - id: asean_oop_highest_2023
+    tags: [ranking, region]
+    turns: ["Which ASEAN country had the highest out-of-pocket share of health spending in 2023?"]
+    checks:
+      - mentions: {where: headline, pattern: "Philippines"}
+      - number: {where: any, tol: 0.15, sql: "SELECT oop_pct FROM health_expenditure WHERE iso3='PHL' AND year=2023"}
+
+  - id: global_dtp3_2024
+    tags: [weighting, coverage]
+    turns: ["What was global DTP3 coverage in 2024?"]
+    checks:
+      - number:
+          where: headline
+          tol: 0.15
+          sql: >-
+            SELECT ROUND(SUM(i.coverage_pct*d.under5_population)/SUM(d.under5_population),1)
+            FROM intervention_coverage i JOIN demographics d USING(iso3,year)
+            WHERE intervention='DTP3' AND source='modeled' AND year=2024
+
+  - id: india_admin_over_100
+    tags: [admin_vs_modeled, data_notes]
+    turns: ["Did India's DTP3 coverage really exceed 100% in 2017?"]
+    checks:
+      - number: {where: any, tol: 0.15, value: 104.1}      # the admin figure
+      - number: {where: any, tol: 0.5, value: 89}          # the modeled estimate
+      - mentions: {pattern: "denominator|target population"}
+
+  - id: dengue_not_in_data
+    tags: [unanswerable, honesty]
+    turns: ["What was the dengue mortality rate in Brazil in 2024?"]
+    checks:
+      - no_value_in_headline: true
+      - mentions: {pattern: "dengue"}
+      - mentions: {where: headline, pattern: "not|no |isn't|doesn't|unavailable"}
