@@ -15,6 +15,7 @@ dataset:
 
 tables:
   countries:
+    label: country list · region schemes
     description: One row per country, with its membership in each region scheme and its income group.
     grain: iso3
     columns:
@@ -37,6 +38,7 @@ tables:
       - "'Southeast Asia' is ambiguous: ASEAN members (asean_join_year IS NOT NULL), UN subregion 'South-eastern Asia', or WHO 'South-East Asia Region' (includes India, Bangladesh, Nepal...)."
 
   demographics:
+    label: population by year
     description: Population by country and year.
     grain: iso3, year
     columns:
@@ -50,6 +52,7 @@ tables:
       - Use population as the denominator when aggregating rates across countries.
 
   disease_burden:
+    label: deaths & incidence by cause
     description: Deaths and incidence by country, year and cause, as counts and as rates per 100,000, with 95% uncertainty intervals.
     grain: iso3, year, cause, measure, metric
     columns:
@@ -69,6 +72,7 @@ tables:
       - Uncertainty bounds of an aggregate can be approximated by summing country bounds (conservative).
 
   intervention_coverage:
+    label: intervention coverage, %
     description: Coverage of vaccines and other interventions, in percent, from two sources.
     grain: iso3, year, intervention, source
     columns:
@@ -95,6 +99,7 @@ tables:
       - "To aggregate coverage across countries, weight by under5_population (vaccines) or population (ITN_use), not a simple mean."
 
   health_expenditure:
+    label: health spending per capita
     description: Current health expenditure (CHE) per capita and as a share of GDP; out-of-pocket share.
     grain: iso3, year
     columns:
@@ -109,6 +114,7 @@ tables:
       - USD reflects exchange rates; PPP reflects purchasing power. Cross-country gaps look much larger in USD. State which one you use.
 
   health_facilities:
+    label: facility survey counts
     description: Counts of hospitals and health centres, and hospital beds, from periodic facility surveys.
     grain: iso3, year, facility_type
     columns:
@@ -122,6 +128,7 @@ tables:
       - Counts are absolute. Normalize per 100,000 population (or beds per 1,000) using demographics before comparing countries.
 
   data_notes:
+    label: caveats & methodology notes
     description: Known caveats, data gaps and methodology changes. Check before answering.
     grain: note_id
     columns:
