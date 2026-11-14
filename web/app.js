@@ -122,8 +122,14 @@ function upsertStep(t, ev) {
   $('.tool', s).textContent = ev.tool;
   $('.args', s).textContent = ev.args || '';
   $('.out', s).textContent = `⎿ ${ev.status === 'running' ? ev.out || '…' : ev.out}`;
-  if (t.follow) t.scroll.scrollTop = t.scroll.scrollHeight;
-  measure(t);
+  if (t.el.classList.contains('pending')) {
+    // Natural-height mode: keep the newest step in view if the reader is already near the bottom of the page.
+    const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 200;
+    if (nearBottom) s.scrollIntoView({ block: 'nearest', behavior: SPEED ? 'smooth' : 'auto' });
+  } else {
+    if (t.follow) t.scroll.scrollTop = t.scroll.scrollHeight;
+    measure(t);
+  }
 }
 
 // ---------------------------------------------------------------------------------------------- answer block
