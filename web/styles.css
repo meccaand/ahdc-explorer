@@ -73,7 +73,7 @@ main {
   margin: 0; font-size: 17px; font-weight: 700; line-height: 1.6; color: var(--answer);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.turn.pending .headline, .turn.failed .headline { color: var(--muted); font-weight: 400; }
+.turn.pending:not(.answered) .headline, .turn.failed .headline { color: var(--muted); font-weight: 400; }
 .connector { flex: 1 1 40px; border-top: 1px solid var(--connector); }
 .steps-head {
   flex: 0 0 var(--steps-w); display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--muted);

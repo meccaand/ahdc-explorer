@@ -98,3 +98,37 @@ def test_sql_guard_hook_denies_and_audits(tmp_path, monkeypatch):
     assert json.loads((tmp_path / "audit.jsonl").read_text())["event"] == "denied"
     ok = asyncio.run(hooks.sql_guard_hook({"tool_input": {"sql": "SELECT 1 FROM countries"}}, "t2", {}))
     assert ok == {}
+
+
+def test_get_draft_shows_real_queries_and_lookups():
+    state = SessionState()
+    state.begin_turn("q")
+    tools = {t.name: t for t in build_tools(state, review=True)}
+    assert call(tools, "get_draft", {}).get("is_error")  # nothing submitted yet
+    call(tools, "get_region_members", {"scheme": "wb_region", "region": "South Asia"})
+    call(tools, "run_sql", {"sql": "SELECT COUNT(*) AS n FROM countries WHERE wb_region = 'South Asia'", "purpose": "count"})
+    res = call(tools, "submit_answer", {"headline": "8 countries", "caveats": [], "assumptions": [], "method": ["m"],
+                                        "confidence_factors": FACTORS})
+    assert "methods-reviewer" in text(res)            # review mode asks for the review next
+    draft = text(call(tools, "get_draft", {}))
+    assert "SELECT COUNT(*) AS n FROM countries" in draft and "South Asia" in draft and "8 countries" in draft
+
+
+def test_resubmit_after_review_marks_revised():
+    state = SessionState()
+    state.begin_turn("q")
+    tools = {t.name: t for t in build_tools(state, review=True)}
+    args = {"headline": "h", "caveats": [], "assumptions": [], "method": ["m"], "confidence_factors": FACTORS}
+    call(tools, "submit_answer", args)
+    state.turn.review = "ISSUES — 1/6 checks failed"
+    res = call(tools, "submit_answer", {**args, "headline": "h2"})
+    assert state.turn.revised and state.turn.answer["headline"] == "h2" and "headline only" in text(res)
+
+
+def test_recheck_sql_is_not_recorded_as_a_source():
+    state = SessionState()
+    state.begin_turn("q")
+    tools = {t.name: t for t in build_tools(state, review=True)}
+    assert "n=179" in text(call(tools, "recheck_sql", {"sql": "SELECT COUNT(*) AS n FROM countries"}))
+    assert not state.queries and not state.turn.query_ids
+    assert call(tools, "recheck_sql", {"sql": "DELETE FROM countries"}).get("is_error")

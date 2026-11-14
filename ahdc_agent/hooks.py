@@ -62,6 +62,6 @@ async def audit_hook(input_data: dict[str, Any], tool_use_id: str | None, contex
 
 def build_hooks() -> dict[str, list[HookMatcher]]:
     return {
-        "PreToolUse": [HookMatcher(matcher=full_name("run_sql"), hooks=[sql_guard_hook])],
+        "PreToolUse": [HookMatcher(matcher=f"{full_name('run_sql')}|{full_name('recheck_sql')}", hooks=[sql_guard_hook])],
         "PostToolUse": [HookMatcher(matcher="mcp__ahdc__.*", hooks=[audit_hook])],
     }

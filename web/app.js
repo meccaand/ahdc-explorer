@@ -141,8 +141,12 @@ const list = (items, glyph, ordered = false) =>
     `<li><span class="g">${typeof glyph === 'function' ? glyph(x, i) : glyph}</span><span>${esc(typeof x === 'string' ? x : x.text)}</span></li>`).join('')}</${ordered ? 'ol' : 'ul'}>`;
 
 function renderAnswer(t, ev) {
-  t.el.classList.remove('pending');
+  // A draft answer (final=false) shows immediately; the steps column stays in its live, natural-height mode until
+  // the final version arrives (after the methods review). Re-renders keep whichever rows the reader opened.
+  if (ev.final !== false) t.el.classList.remove('pending');
+  const open = new Set([...t.answerCol.querySelectorAll('details[open] .sl')].map((x) => x.textContent));
   t.headline.textContent = ev.headline;
+  t.el.classList.add('answered');
   t.headline.title = ev.headline;
   const c = ev.confidence;
   const meter = [1, 2, 3, 4, 5].map((i) => `<span class="${i <= c.score ? 'on' : ''}"></span>`).join('');
@@ -159,6 +163,7 @@ function renderAnswer(t, ev) {
       `<div class="src"><span><span class="t">${esc(s.table)}</span> <span class="m">${esc([s.label, ...s.filters].filter(Boolean).join(' · '))}</span></span><span class="m">${plural(s.rows, 'row', 'rows')}</span></div>`).join('')}</div>`);
   }
   t.answerCol.innerHTML = html + '</div>';
+  t.answerCol.querySelectorAll('details').forEach((d) => { if (open.has($('.sl', d).textContent)) d.open = true; });
   const box = $('.sqlbox', t.answerCol);
   if (box) renderSql(box, ev.sql, 0);
   if (params.get('expand')) t.answerCol.querySelectorAll('details').forEach((d) => { d.open = true; });  // screenshots
@@ -183,7 +188,10 @@ function showError(t, message) {
 function finish(t, ev) {
   t.finished = true;
   const s = ev.stats || {};
-  if (t.el.classList.contains('pending')) showError(t, 'The agent stopped without an answer.');
+  if (t.el.classList.contains('pending')) {
+    if (t.el.classList.contains('answered')) t.el.classList.remove('pending');  // keep the draft we already showed
+    else showError(t, 'The agent stopped without an answer.');
+  }
   t.secs.textContent = s.seconds != null ? `${s.seconds}s` : t.secs.textContent;
   const cost = s.cost_usd != null ? ` · $${s.cost_usd.toFixed(2)}` : '';
   t.usage.textContent = `${plural(s.tool_calls ?? 0, 'tool call', 'tool calls')} · ${kfmt(s.tokens_in)} in / ${kfmt(s.tokens_out)} out${cost}`;

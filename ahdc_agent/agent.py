@@ -10,16 +10,17 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import re
 import time
 from typing import Any, AsyncIterator
 
-from claude_agent_sdk import (AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage, StreamEvent,
+from claude_agent_sdk import (AgentDefinition, AssistantMessage, ClaudeAgentOptions, ClaudeSDKClient, ResultMessage, StreamEvent,
                               SystemMessage, TextBlock, ToolResultBlock, ToolUseBlock, UserMessage)
 from dotenv import load_dotenv
 
 from . import db
 from .hooks import build_hooks
-from .prompts import SYSTEM_PROMPT
+from .prompts import REVIEW_INSTRUCTIONS, REVIEWER_PROMPT, SYSTEM_PROMPT
 from .sql_guard import filter_values
 from .state import SessionState
 from .tools import SERVER, build_server
@@ -31,28 +32,53 @@ load_dotenv(db.ROOT / ".env")
 MODEL = os.getenv("AHDC_MODEL", "claude-sonnet-5-5")
 EFFORT = os.getenv("AHDC_EFFORT", "medium")
 FAST = os.getenv("AHDC_FAST", "") == "1"  # fast mode: same model, faster output, higher price (SDK opt-in)
+REVIEW = os.getenv("AHDC_REVIEW", "1") == "1"  # methods-reviewer subagent
+REVIEWER_MODEL = os.getenv("AHDC_REVIEWER_MODEL", "claude-haiku-5-5")
 SKILL = "ahdc-analysis-standards"
 PREFIX = f"mcp__{SERVER}__"
+VERDICT = re.compile(r"(PASS|ISSUES)\s*[—-]\s*\d+/\d+ checks? (passed|failed)")
+
+
+def schema_text() -> str:
+    """Compact table(columns) listing from the data dictionary, so the reviewer can write one correct query."""
+    lines = []
+    for name, t in db.dictionary()["tables"].items():
+        cols = []
+        for c, spec in t["columns"].items():
+            vals = (spec or {}).get("values")
+            cols.append(f"{c} {vals}" if vals and len(vals) <= 8 else c)
+        lines.append(f"- {name}({', '.join(cols)})")
+    return "Schema:\n" + "\n".join(lines)
 
 
 def build_options(state: SessionState) -> ClaudeAgentOptions:
-    server, tool_names = build_server(state)
+    server, tool_names = build_server(state, review=REVIEW)
+    # Subagent: a second, cheaper model checks the draft and independently recomputes the headline number.
+    agents = {"methods-reviewer": AgentDefinition(
+        description="Checks a draft AHDC answer against the analysis standards and recomputes the headline number.",
+        prompt=REVIEWER_PROMPT + "\n" + schema_text(), tools=[f"{PREFIX}get_draft", f"{PREFIX}recheck_sql"], model=REVIEWER_MODEL, effort="low", maxTurns=6,
+        skills=[SKILL],    # the reviewer judges against the same standards the analyst follows
+        background=False,  # the main agent must wait for the verdict before submitting
+    )} if REVIEW else None
+    builtins = ["Skill", "Agent"] if REVIEW else ["Skill"]
     return ClaudeAgentOptions(
         model=MODEL,
         effort=EFFORT,
-        system_prompt=SYSTEM_PROMPT,
-        # Tools: our in-process MCP server, plus the built-in Skill tool. No Bash, files or web.
+        system_prompt=SYSTEM_PROMPT + (REVIEW_INSTRUCTIONS if REVIEW else ""),
+        # Tools: our in-process MCP server, plus the built-in Skill (and Agent, for the subagent). No Bash, files or web.
         mcp_servers={SERVER: server},
         strict_mcp_config=True,
-        tools=["Skill"],
-        allowed_tools=[*tool_names, "Skill"],
+        tools=builtins,
+        allowed_tools=[*tool_names, *builtins],
+        agents=agents,
         permission_mode="dontAsk",          # anything not allowed is denied, never prompted
         hooks=build_hooks(),
         # Load only this repo's .claude/ (the skill), never the developer's personal ~/.claude settings or memory.
         setting_sources=["project"],
         skills=[SKILL],
         cwd=str(db.ROOT),
-        env={"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", "")},
+        env={"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1", "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
+             "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"},  # subagents run in the foreground
         max_turns=40,
         include_partial_messages=True,      # stream events, so a step can be shown as soon as the model starts it
         max_budget_usd=float(os.getenv("AHDC_MAX_BUDGET_USD", "5")),
@@ -70,6 +96,12 @@ def _log_stderr(line: str) -> None:
 
 
 # --- turning SDK messages into UI events -----------------------------------------------------------------------
+def pretty_model(model_id: str) -> str:
+    """claude-haiku-5-5 -> Haiku 5.5"""
+    parts = model_id.removeprefix("claude-").split("-")
+    return f"{parts[0].capitalize()} {'.'.join(parts[1:])}".strip()
+
+
 def short_tool(name: str) -> str:
     if name.startswith(PREFIX):
         return name[len(PREFIX):]
@@ -89,6 +121,8 @@ def tool_args(name: str, inp: dict[str, Any]) -> str:
                                for k in ("scheme", "region", "as_of_year") if inp.get(k)) + ")"
     if n == "get_data_notes":
         return "(" + ", ".join(str(inp[k]) for k in ("table", "indicator", "iso3", "year") if inp.get(k)) + ")"
+    if n == "methods_review":
+        return f"({inp.get('subagent_type', '')})"
     if n == "render_chart":
         return f"({inp.get('type', '')}, {inp.get('query_id', '')})"
     if n in ("list_tables", "submit_answer"):
@@ -190,15 +224,26 @@ class AgentSession:
                     if isinstance(block, ToolResultBlock) and block.tool_use_id in steps:
                         step = steps[block.tool_use_id]
                         text = result_text(block)
-                        step.update(status="error" if block.is_error else "done", out=text.split("\n", 1)[0][:200])
+                        out = text.split("\n", 1)[0][:200]
+                        if step["tool"] == "methods_review":  # the verdict line sits inside the SDK's hand-back wrapper
+                            m = VERDICT.search(text)
+                            out = m.group(0) if m else "review incomplete"
+                            turn.review = out
+                            turn.review_report = "\n".join(l.strip() for l in text.split("\n")
+                                                           if l.strip().startswith(("PASS", "ISSUES", "✓", "✗")))
+                        step.update(status="error" if block.is_error else "done", out=out)
+                        yield dict(step)
                         if step["tool"] == "submit_answer" and not block.is_error:
                             answered = True
-                        yield dict(step)
+                            # Show the draft right away; the methods review (if on) finishes beside it.
+                            yield {"type": "answer", "turn": turn.index, "final": not REVIEW, **self.assemble_answer()}
+                        elif step["tool"] == "methods_review" and turn.answer and not turn.revised:
+                            yield {"type": "answer", "turn": turn.index, "final": False, **self.assemble_answer()}
             elif isinstance(msg, ResultMessage):
                 result = msg
 
         if turn.answer:
-            yield {"type": "answer", "turn": turn.index, **self.assemble_answer()}
+            yield {"type": "answer", "turn": turn.index, "final": True, **self.assemble_answer()}
         else:
             reason = (result.errors or [result.subtype]) if result else ["no result"]
             yield {"type": "error", "turn": turn.index,
@@ -239,7 +284,22 @@ class AgentSession:
                 s = sources.setdefault(t, {"table": t, "label": dd[t].get("label", ""), "filters": [], "rows": 0})
                 s["rows"] += q.row_count
                 s["filters"] += [f for f in filters.get(t, []) if f not in s["filters"]]
-        return {**turn.answer,
+        answer = dict(turn.answer)
+        if REVIEW:  # this line comes from the reviewer's actual verdict, not from the model's text
+            who = f"Independent methods review ({pretty_model(REVIEWER_MODEL)})"
+            if not turn.review:
+                line = f"{who}: in progress…"
+            elif turn.review.startswith("PASS"):
+                line = f"{who}: {turn.review}."
+            else:
+                k = turn.review.split("—")[-1].strip().split(" ")[0].split("/")[0]
+                what = "1 issue" if k == "1" else f"{k} issues"
+                line = (f"{who} flagged {what}; the answer was revised to address {'it' if k == '1' else 'them'}."
+                        if turn.revised else f"{who}: {turn.review} (not resolved).")
+            answer["method"] = [*answer["method"], line]
+        answer["reviewed"] = turn.review
+        answer["review_report"] = turn.review_report
+        return {**answer,
                 "sql": [{"id": q.id, "purpose": q.purpose, "sql": q.sql, "rows": q.row_count} for q in queries],
                 "sources": list(sources.values()),
                 "chart": turn.chart}

@@ -28,3 +28,18 @@ Haiku's misses were wrong numbers, not formatting: the WHO African Region malari
 4. Charts were optional, and the follow-up sometimes had none; the skill now expects a chart for any multi-value answer (bar for drivers and rankings). Demo beats rechecked: 12/12.
 
 Raw results: `evals/results/*.jsonl`. Re-run: `uv run python evals/run_evals.py [--only demo] [--repeat N] [--model …]`.
+
+## Methods-reviewer subagent (M5)
+
+A `methods-reviewer` subagent (Haiku 5.5, effort low) reviews each draft. It loads the same `ahdc-analysis-standards` skill, reads the draft and the queries actually run (`get_draft`), and **recomputes the headline number with its own query** (`recheck_sql`, not recorded as a source). It returns `PASS — 6/6` or a list of issues; the analyst revises once if needed. The server, not the model, writes the review's outcome into the answer's Method section.
+
+| | Reviewer off | Reviewer on |
+|---|---|---|
+| Golden set | 15/15 | 15/15 |
+| Time until the answer is shown | ~13 s (median) | **10.5 s** (the draft shows as soon as it's submitted) |
+| Time until the turn completes | ~13 s | ~26 s (the review runs beside the visible answer) |
+| Cost / question | $0.033 | ~$0.05–0.07 |
+| Drafts flagged and revised | — | about half |
+
+What it caught (all real): "Nigeria drove **most** of the decline" (it's 28%); "malaria **deaths** fell 33%" (the *rate* fell 33%; deaths fell 16%); "WHO African Region (44 countries)" (it has 47 members, 44 with data); a caveat that quoted the 2015 interval as if it were 2025's; missing back-cast caveats. Early versions over-flagged (a synthetic-data notice, the house 95%-interval convention) until the reviewer was given the shared skill and a "fail only if a number is wrong or a reader could be misled" rule.
+

@@ -33,13 +33,17 @@ class TurnState:
     question: str
     query_ids: list[str] = field(default_factory=list)
     chart: dict[str, Any] | None = None
-    answer: dict[str, Any] | None = None      # validated submit_answer input
+    answer: dict[str, Any] | None = None      # validated submit_answer input (the latest draft)
+    review: str | None = None                  # methods-reviewer verdict line, e.g. "PASS — 6/6 checks passed"
+    revised: bool = False                      # submit_answer was called again after the review
+    review_report: str = ""                    # the reviewer's full report (✓/✗ lines)
     raw_messages: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
 class SessionState:
     queries: dict[str, QueryRecord] = field(default_factory=dict)
+    lookups: list[tuple[int, str, str]] = field(default_factory=list)  # (turn, label, text): region/notes lookups
     turns: list[TurnState] = field(default_factory=list)
 
     @property

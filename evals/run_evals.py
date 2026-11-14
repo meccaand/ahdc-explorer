@@ -32,13 +32,16 @@ async def run_item(item: dict, sem: asyncio.Semaphore) -> dict:
 
     async with sem:
         t0 = time.monotonic()
-        answer, stats, error = None, [], None
+        answer, stats, error, first_answer = None, [], None, None
         try:
             async with AgentSession() as session:
                 for q in item["turns"]:
                     answer = None
+                    tq = time.monotonic()
                     async for ev in session.ask(q):
                         if ev["type"] == "answer":
+                            if answer is None:
+                                first_answer = round(time.monotonic() - tq, 1)
                             answer = ev
                         elif ev["type"] == "error":
                             error = ev["message"]
@@ -52,7 +55,9 @@ async def run_item(item: dict, sem: asyncio.Semaphore) -> dict:
             "id": item["id"], "tags": item.get("tags", []), "passed": all(r["ok"] for r in results),
             "checks": results, "headline": answer["headline"] if answer else None,
             "confidence": f"{answer['confidence']['level']} {answer['confidence']['score']}/5" if answer else None,
-            "error": error, "seconds": last.get("seconds"), "tool_calls": last.get("tool_calls"),
+            "error": error, "seconds": last.get("seconds"), "first_answer_s": first_answer,
+            "review": answer.get("reviewed") if answer else None,
+            "review_report": answer.get("review_report") if answer else None, "tool_calls": last.get("tool_calls"),
             "cost_usd": round(sum((s.get("cost_usd") or 0) for s in stats), 4),
             "wall_seconds": round(time.monotonic() - t0, 1),
         }
@@ -108,6 +113,12 @@ async def main() -> None:
             print(f"  {k:<26} {sum(v)}/{len(v)}")
     if secs:
         print(f"seconds per item: median {statistics.median(secs):.1f}, max {max(secs):.1f}")
+    fa = [r["first_answer_s"] for r in results if r.get("first_answer_s")]
+    if fa:
+        print(f"seconds to first answer shown: median {statistics.median(fa):.1f}, max {max(fa):.1f}")
+    reviews = [r["review"] for r in results if r.get("review")]
+    if reviews:
+        print(f"methods review: {sum(v.startswith('PASS') for v in reviews)}/{len(reviews)} passed first time")
     print(f"cost: total ${sum(r['cost_usd'] for r in results):.2f}, "
           f"mean ${statistics.mean(r['cost_usd'] for r in results):.3f} per item")
     print(f"wall clock {time.monotonic() - t0:.0f}s · results: {out.relative_to(ROOT)}")

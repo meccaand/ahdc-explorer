@@ -50,7 +50,7 @@ The design spec is in `../design/DESIGN.md` (locked).
 
 ## Model and speed
 
-The default is `claude-sonnet-5-5` at effort `medium`; `AHDC_MODEL`, `AHDC_EFFORT` and `AHDC_FAST=1` (fast mode, via the SDK's `settings` opt-in) override it. Turns take about 10–20 s. Each step appears as soon as the model starts writing it (`include_partial_messages`).
+The default is `claude-sonnet-5-5` at effort `medium`, with a Haiku 5.5 methods reviewer (`AHDC_REVIEW=0` turns it off, `AHDC_REVIEWER_MODEL` changes it); `AHDC_MODEL`, `AHDC_EFFORT` and `AHDC_FAST=1` (fast mode, via the SDK's `settings` opt-in) override it. Turns take about 10–20 s. Each step appears as soon as the model starts writing it (`include_partial_messages`).
 
 ## Run the agent (CLI)
 
@@ -80,5 +80,6 @@ Latest results: `evals/RESULTS.md`. Sonnet 5.5 passes 30/30 at a median of 13 s 
 | The data team's analysis standards | Agent Skill, loaded on demand | `.claude/skills/ahdc-analysis-standards/SKILL.md` |
 | Tool lockdown | `tools=["Skill"]` (no Bash/files/web), `allowed_tools`, `permission_mode="dontAsk"`, `strict_mcp_config` | `ahdc_agent/agent.py` |
 | Isolation from the developer's own Claude setup | `setting_sources=["project"]`, auto-memory off | `ahdc_agent/agent.py` |
+| Methods review | Subagent `methods-reviewer` (`agents=`, Haiku 5.5, shared skill, own tools `get_draft` and `recheck_sql`); recomputes the headline number | `ahdc_agent/agent.py`, `prompts.py`, `tools.py` |
 | Answer contract | `submit_answer` tool; SQL and sources filled from the queries actually run, and the confidence score computed from a fixed 4-check rubric | `ahdc_agent/tools.py`, `state.py` |
 | Cost and usage | `ResultMessage` (cost, usage, duration), `get_context_usage()` | `ahdc_agent/agent.py` |

@@ -61,7 +61,7 @@ async def run_turn(session: AgentSession, question: str, as_json: bool, save_tra
                 if ev["tool"] == "plan":
                     print(f"  {GREEN}●{RESET} {BOLD}plan{RESET}")
                 print(f"    {color}⎿ {ev['out']}{RESET}", flush=True)
-        elif ev["type"] == "answer":
+        elif ev["type"] == "answer" and ev.get("final", True):
             print_answer(ev)
         elif ev["type"] == "error":
             print(f"\n{RED}● {ev['message']}{RESET}")

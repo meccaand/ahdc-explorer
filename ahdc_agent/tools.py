@@ -59,13 +59,13 @@ def table_text(columns: list[str], rows: list[tuple], limit: int = SHOW_ROWS) ->
     return "\n".join(lines)
 
 
-def build_server(state: SessionState):
+def build_server(state: SessionState, review: bool = False):
     """Create the in-process MCP server for one session. Returns (server config, full tool names)."""
-    tools = build_tools(state)
+    tools = build_tools(state, review)
     return create_sdk_mcp_server(SERVER, "1.0.0", tools=tools), [full_name(t.name) for t in tools]
 
 
-def build_tools(state: SessionState) -> list:
+def build_tools(state: SessionState, review: bool = False) -> list:
     """The tool objects. They are closures over this session's state."""
 
     @tool("list_tables", "List the tables in the AHDC database with a one-line description of each. "
@@ -143,6 +143,8 @@ def build_tools(state: SessionState) -> list:
         finally:
             con.close()
         body = f"{label}: {len(rows)} countries\n" + "\n".join(" · ".join(map(str, r)) for r in rows)
+        state.lookups.append((state.turn.index, f"get_region_members({scheme}, {region or args.get('as_of_year', '')})",
+                              f"{label}: {len(rows)} countries"))
         return ok(f"{len(rows)} countries · {label}", body)
 
     @tool("get_data_notes", "Get known caveats, data gaps and methodology changes for a table, optionally "
@@ -170,6 +172,8 @@ def build_tools(state: SessionState) -> list:
         for table, ind, iso, y0, y1, note in res.rows:
             scope = ", ".join(x for x in (table, ind, iso, (f"{y0}" if y0 == y1 else f"{y0}-{y1}") if y0 else None) if x)
             lines.append(f"- [{scope}] {note}")
+        state.lookups.append((state.turn.index, f"get_data_notes({', '.join(str(v) for v in args.values())})",
+                              "\n".join(lines) or "No notes."))
         return ok(f"{len(lines)} notes", "\n".join(lines) or "No notes.")
 
     @tool("run_sql", "Run one read-only SQLite SELECT against the AHDC database. Returns a query_id, the "
@@ -198,6 +202,47 @@ def build_tools(state: SessionState) -> list:
         if n == 1 and len(res.columns) <= 6:
             summary += " · " + " · ".join(f"{c}={fmt_value(v)}" for c, v in zip(res.columns, res.rows[0]))
         return ok(summary, f"query_id: {qid}\n{table_text(res.columns, res.rows)}")
+
+    @tool("get_draft", "Methods reviewer only: the question, the current draft answer, and the queries the analyst "
+          "actually ran this turn, with their results.", {}, annotations=READ_ONLY)
+    async def get_draft(args: dict[str, Any]) -> dict[str, Any]:
+        turn = state.turn
+        if not turn.answer:
+            return err("No draft has been submitted yet.")
+        a = turn.answer
+        parts = [f"Question: {turn.question}", f"Headline: {a['headline']}",
+                 "Confidence factors:\n" + "\n".join(f"  {f['check']} {f['sign']} {f['text']}" for f in a["confidence"]["factors"]),
+                 "Caveats:\n" + "\n".join(f"  - {x}" for x in a["caveats"]),
+                 "Assumptions:\n" + "\n".join(f"  - {x}" for x in a["assumptions"]),
+                 "Method:\n" + "\n".join(f"  {i}. {x}" for i, x in enumerate(a["method"], 1))]
+        parts.append("Lookups in this conversation (region definitions and data notes):\n" + "\n".join(
+            f"  [turn {t}] {label}: {text}" for t, label, text in state.lookups) if state.lookups else "Lookups: none")
+        earlier = [q for q in state.queries.values() if q.turn < turn.index]
+        if earlier:
+            parts.append("Queries from earlier turns (facts established there may be reused):\n" + "\n".join(
+                f"  {q.id} (turn {q.turn}): {q.purpose} · {q.row_count} rows" for q in earlier))
+        for qid in turn.query_ids:
+            q = state.queries[qid]
+            parts.append(f"Query {qid}: {q.purpose}\nSQL:\n{q.sql}\nResult ({q.row_count} rows):\n"
+                         f"{table_text(q.columns, q.rows, limit=30)}")
+        return ok(f"draft · {len(turn.query_ids)} queries", "\n\n".join(parts))
+
+    @tool("recheck_sql", "Methods reviewer only: run one read-only SELECT to independently recompute a number. "
+          "Not recorded as part of the answer's sources. Returns up to 50 rows.",
+          {"type": "object", "properties": {"sql": {"type": "string"}}, "required": ["sql"]}, annotations=READ_ONLY)
+    async def recheck_sql(args: dict[str, Any]) -> dict[str, Any]:
+        guard = check_sql(args["sql"])
+        if not guard.ok:
+            return err(f"Query rejected: {guard.reason}")
+        try:
+            res = db.run_query(args["sql"].strip(), max_rows=50)
+        except sqlite3.Error as e:
+            return err(f"SQLite error: {e}")
+        n = len(res.rows)
+        summary = f"{n} row{'s' if n != 1 else ''}"
+        if n == 1 and len(res.columns) <= 6:
+            summary += " · " + " · ".join(f"{c}={fmt_value(v)}" for c, v in zip(res.columns, res.rows[0]))
+        return ok(summary, table_text(res.columns, res.rows))
 
     @tool("render_chart", "Attach a chart to the answer, plotted from the rows a previous run_sql call "
           "returned (by query_id), so plotted values always come from the database. Use a line chart for "
@@ -268,12 +313,16 @@ def build_tools(state: SessionState) -> list:
             problems.append(f"confidence_factors must cover each check exactly once ({', '.join(CHECKS)}); got {checks}")
         if problems:
             return err("Answer not accepted: " + "; ".join(problems) + ". Fix and call submit_answer again.")
+        if state.turn.review:
+            state.turn.revised = True
         conf = confidence(sorted(args["confidence_factors"], key=lambda f: CHECKS.index(f["check"])))
         unnumber = lambda items: [re.sub(r"^\s*(\d+[.)]|[-•*])\s*", "", x).strip() for x in items]
         state.turn.answer = {"headline": headline, "confidence": conf, "caveats": unnumber(args["caveats"]),
                              "assumptions": unnumber(args["assumptions"]), "method": unnumber(args["method"]),
                              "primary_query_id": args.get("primary_query_id")}
-        return ok(f"answer submitted · confidence {conf['level']} {conf['score']}/5",
-                  "Accepted. Now reply with the headline only, nothing else.")
+        nxt = ("Draft saved. Now call the methods-reviewer subagent." if review and not state.turn.review
+               else "Accepted. Now reply with the headline only, nothing else.")
+        return ok(f"answer submitted · confidence {conf['level']} {conf['score']}/5", nxt)
 
-    return [list_tables, describe_table, get_region_members, get_data_notes, run_sql, render_chart, submit_answer]
+    return [list_tables, describe_table, get_region_members, get_data_notes, run_sql, get_draft, recheck_sql,
+            render_chart, submit_answer]
