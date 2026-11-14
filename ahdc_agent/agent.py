@@ -208,7 +208,9 @@ class AgentSession:
     def assemble_answer(self) -> dict[str, Any]:
         """The answer card: the model's submit_answer content plus provenance taken from the queries actually run."""
         turn = self.state.turn
-        queries = [self.state.queries[q] for q in turn.query_ids]
+        primary = turn.answer.get("primary_query_id")
+        ids = sorted(turn.query_ids, key=lambda q: q != primary)  # the headline's query first
+        queries = [self.state.queries[q] for q in ids]
         dd = db.dictionary()["tables"]
         sources: dict[str, dict[str, Any]] = {}
         for q in queries:

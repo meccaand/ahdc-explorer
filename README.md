@@ -36,6 +36,18 @@ The generator deliberately plants realistic analytical pitfalls:
 
 `tests/test_data_traps.py` documents and checks each one.
 
+## Run the web UI
+
+```bash
+uv run uvicorn server.app:app --port 8000      # then open http://127.0.0.1:8000
+```
+
+- Type a question and press Enter. On an empty prompt, **Tab** fills the next demo question, and **/new** starts a new session.
+- Each turn shows the agent's steps live. The answer has a confidence meter (4-check rubric), a chart, and collapsible Confidence, Caveats, Assumptions, Method, SQL and Source data rows. **raw trace** opens that turn's raw Agent SDK messages.
+- **Offline fallback:** `/?replay=demo` replays a recorded run of the four demo questions with no API calls; Tab then Enter plays each turn. Add `&autoplay=1` to play all of them, and `&speed=fast` or `&speed=instant`. To re-record: `uv run python scripts/record_replay.py demo`.
+
+The design spec is in `../design/DESIGN.md` (locked).
+
 ## Run the agent (CLI)
 
 ```bash

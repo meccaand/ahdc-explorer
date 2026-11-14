@@ -253,7 +253,8 @@ def build_tools(state: SessionState) -> list:
                   "required": ["check", "sign", "text"]}},
               "caveats": {"type": "array", "items": {"type": "string"}},
               "assumptions": {"type": "array", "items": {"type": "string"}},
-              "method": {"type": "array", "minItems": 1, "items": {"type": "string"}, "description": "Plain-language steps, without numbers (the UI numbers them)."}},
+              "method": {"type": "array", "minItems": 1, "items": {"type": "string"}, "description": "Plain-language steps, without numbers (the UI numbers them)."},
+              "primary_query_id": {"type": "string", "description": "The query_id whose result gives the headline number (shown first in the SQL section)."}},
            "required": ["headline", "confidence_factors", "caveats", "assumptions", "method"]})
     async def submit_answer(args: dict[str, Any]) -> dict[str, Any]:
         headline = " ".join(args["headline"].split()).rstrip(".")
@@ -270,7 +271,8 @@ def build_tools(state: SessionState) -> list:
         conf = confidence(sorted(args["confidence_factors"], key=lambda f: CHECKS.index(f["check"])))
         unnumber = lambda items: [re.sub(r"^\s*(\d+[.)]|[-•*])\s*", "", x).strip() for x in items]
         state.turn.answer = {"headline": headline, "confidence": conf, "caveats": unnumber(args["caveats"]),
-                             "assumptions": unnumber(args["assumptions"]), "method": unnumber(args["method"])}
+                             "assumptions": unnumber(args["assumptions"]), "method": unnumber(args["method"]),
+                             "primary_query_id": args.get("primary_query_id")}
         return ok(f"answer submitted · confidence {conf['level']} {conf['score']}/5",
                   "Accepted. Now reply with the headline only, nothing else.")
 
