@@ -136,7 +136,8 @@ details[open] .chev { transform: rotate(90deg); }
 .sources .m { color: var(--muted); }
 
 /* Agent steps column */
-.steps-col { flex: 0 0 var(--steps-w); min-width: 0; min-height: 220px; max-height: 460px; position: relative; }
+/* Condensed: the column stretches to exactly the answer column's height (flex stretch), never below 220px. */
+.steps-col { flex: 0 0 var(--steps-w); min-width: 0; min-height: 220px; position: relative; }
 .steps-inner { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; }
 .steps-viewport { flex: 1 1 auto; min-height: 0; position: relative; }
 .steps-scroll {
@@ -170,11 +171,11 @@ details[open] .chev { transform: rotate(90deg); }
 }
 .steps-foot .trace { margin-left: auto; }  /* stays right-aligned if the usage text wraps it to a new line */
 /* While the agent is working, the steps list flows at its natural height (no scroll box), so every step is
-   visible as it happens. When the answer arrives (.pending removed) it condenses to the 220-460px scroll box. */
+   visible as it happens. When the answer arrives (.pending removed) it condenses to a scroll box as tall as the answer. */
 .turn.pending .steps-col { max-height: none; min-height: 0; }
 .turn.pending .steps-inner, .turn.pending .steps-viewport, .turn.pending .steps-scroll { position: static; }
 .turn.pending .steps-scroll { overflow: visible; padding-bottom: 4px; }
-.turn.pending .fade, .turn.pending .more-btn { display: none; }
+.turn.pending .fade, .turn.pending .more-btn, .turn.pending .steps-foot { display: none; }
 .step { scroll-margin-bottom: 140px; }  /* keep auto-scrolled steps clear of the sticky input */
 [hidden] { display: none !important; }
 

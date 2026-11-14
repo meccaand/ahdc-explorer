@@ -125,7 +125,7 @@ function upsertStep(t, ev) {
   if (t.el.classList.contains('pending')) {
     // Natural-height mode: keep the newest step in view if the reader is already near the bottom of the page.
     const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 200;
-    if (nearBottom) s.scrollIntoView({ block: 'nearest', behavior: SPEED ? 'smooth' : 'auto' });
+    if (nearBottom && SPEED) s.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   } else {
     if (t.follow) t.scroll.scrollTop = t.scroll.scrollHeight;
     measure(t);

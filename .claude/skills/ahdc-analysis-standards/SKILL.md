@@ -42,6 +42,7 @@ These are the data team's house rules. Follow them for every answer. When a rule
 - For a single-year rate question, chart the regional trend over time from a query that returns year and rate, so the reader sees the number in context.
 - The plotted query must return exactly the columns plotted, in tidy form: one row per (x, series).
 - At most 4 lines and at most 25 bars.
+- Label countries by name (join `countries.name`), not by ISO3 code; readers aren't data engineers.
 
 ## 6. Answer format (`submit_answer`)
 - **headline:** one plain sentence with the key number and unit, under 90 characters, no trailing period. Spell out region names ("Sub-Saharan Africa", not "SSA"). Example: "Malaria killed 52.1 per 100,000 people in Sub-Saharan Africa in 2025".
